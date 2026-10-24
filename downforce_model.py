@@ -594,13 +594,14 @@ plt.show()
 
 # -------- Part 9 - Independent Model Validation
 
-# Refit optimised Gaussian RBF using the full training dataset
-x_mean = x_train.mean(axis=0)
-x_std = x_train.std(axis=0)
 
+# Final Optimised Gaussian RBF Model
+x_mean_tuned = x_train.mean(axis=0)
+x_std_tuned = x_train.std(axis=0)
 def tuned_rbf_kernel(X1, X2):
-    X1_scaled = (X1 - x_mean) / x_std
-    X2_scaled = (X2 - x_mean) / x_std
+
+    X1_scaled = (X1 - x_mean_tuned) / x_std_tuned
+    X2_scaled = (X2 - x_mean_tuned) / x_std_tuned
 
     dist_sq = np.sum(
         (X1_scaled[:, None, :] - X2_scaled[None, :, :])**2,
@@ -610,6 +611,7 @@ def tuned_rbf_kernel(X1, X2):
     return np.exp(-dist_sq / (2 * best_length_scale**2))
 
 
+# Fit final model using all training measurements
 K_tuned = tuned_rbf_kernel(x_train, x_train)
 y_mean_tuned = y_train.mean()
 
@@ -617,7 +619,6 @@ weights_tuned = np.linalg.solve(
     K_tuned + best_regularisation * np.eye(len(x_train)),
     y_train - y_mean_tuned
 )
-
 
 # Prediction functions for the three fitted models
 def predict_model(model, X):
@@ -635,90 +636,13 @@ def predict_model(model, X):
             + tuned_rbf_kernel(X, x_train) @ weights_tuned
         )
 
+# Testing validation dataset into the model
+from validation import run_validation
 
-# Independent validation datasets
-validation_sets = {
-    "Wind Tunnel Validation": (X_val1, Y_val1),
-    "CFD Comparison": (X_val2, Y_val2)
-}
-
-validation_results = {}
-
-# Calculate validation errors
-for dataset_name, (X_val, Y_val) in validation_sets.items():
-
-    validation_results[dataset_name] = {}
-
-    print(f"\n{dataset_name}")
-    print("-" * 45)
-
-    for model in model_names:
-
-        predictions = predict_model(model, X_val)
-
-        errors = predictions - Y_val
-        rmse = np.sqrt(np.mean(errors**2))
-        mae = np.mean(np.abs(errors))
-
-        validation_results[dataset_name][model] = {
-            "predictions": predictions,
-            "rmse": rmse,
-            "mae": mae
-        }
-
-        print(
-            f"{model:15s} "
-            f"RMSE = {rmse:.5f} m^2, "
-            f"MAE = {mae:.5f} m^2"
-        )
-
-
-# -------- Plot Independent Validation Results
-fig, axes = plt.subplots(1, 2, figsize=(15, 7), dpi=120)
-
-# Shared axis limits
-all_values = []
-
-for dataset_name, (X_val, Y_val) in validation_sets.items():
-    all_values.extend(Y_val)
-
-    for model in model_names:
-        all_values.extend(
-            validation_results[dataset_name][model]["predictions"]
-        )
-
-limits = [min(all_values), max(all_values)]
-
-for ax, (dataset_name, (X_val, Y_val)) in zip(
-    axes, validation_sets.items()
-):
-
-    # Ideal prediction
-    ax.plot(limits, limits, "k--", label="Ideal Prediction")
-
-    # Plot each model
-    for model in model_names:
-
-        results = validation_results[dataset_name][model]
-        predictions = results["predictions"]
-        rmse = results["rmse"]
-
-        ax.scatter(
-            Y_val,
-            predictions,
-            s=45,
-            label=f"{model} (RMSE = {rmse:.4f})"
-        )
-
-    ax.set_xlabel(r"Reference $C_LA$ ($\mathrm{m^2}$)")
-    ax.set_ylabel(r"Predicted $C_LA$ ($\mathrm{m^2}$)")
-    ax.set_title(dataset_name)
-
-    ax.set_xlim(limits)
-    ax.set_ylim(limits)
-    ax.set_aspect("equal", adjustable="box")
-    ax.grid(True)
-    ax.legend(loc="best", fontsize=9)
-
-plt.tight_layout()
-plt.show()
+validation_results = run_validation(
+    predict_model=predict_model,
+    model_names=model_names,
+    train=train,
+    val1=val1,
+    val2=val2
+)
