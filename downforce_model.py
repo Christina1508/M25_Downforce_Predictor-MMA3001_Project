@@ -464,7 +464,9 @@ plt.tight_layout()
 plt.show()
 
 
+
 # -------- Part 8 - Gaussian RBF Hyperparameter Optimisation
+
 # Hyperparameter ranges
 length_scales = [0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
 regularisations = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
@@ -591,13 +593,13 @@ plt.tight_layout()
 plt.show()
 
 
-
 # -------- Part 9 - Independent Model Validation
-
 
 # Final Optimised Gaussian RBF Model
 x_mean_tuned = x_train.mean(axis=0)
 x_std_tuned = x_train.std(axis=0)
+x_std_tuned = np.where(x_std_tuned == 0, 1, x_std_tuned)
+
 def tuned_rbf_kernel(X1, X2):
 
     X1_scaled = (X1 - x_mean_tuned) / x_std_tuned
@@ -620,6 +622,7 @@ weights_tuned = np.linalg.solve(
     y_train - y_mean_tuned
 )
 
+
 # Prediction functions for the three fitted models
 def predict_model(model, X):
 
@@ -636,6 +639,7 @@ def predict_model(model, X):
             + tuned_rbf_kernel(X, x_train) @ weights_tuned
         )
 
+
 # Testing validation dataset into the model
 from validation import run_validation
 
@@ -646,3 +650,14 @@ validation_results = run_validation(
     val1=val1,
     val2=val2
 )
+
+
+
+# -------- Part 10 - Aerodynamic Sensitivity Analysis
+from sensitivity import run_sensitivity
+
+sensitivity_results = run_sensitivity(
+    predict_model=predict_model,
+    x_train=x_train
+)
+
