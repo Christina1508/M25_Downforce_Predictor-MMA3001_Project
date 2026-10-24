@@ -251,3 +251,474 @@ for ax, (name, equation, predictions, model_rmse, model_mae) in zip(axes, models
 
 plt.tight_layout()
 plt.show()
+
+
+
+# -------- Part 6 - Cross-Validation and Model Selection
+
+# Fit a model and predict unseen inputs
+def fit_predict(model, X_fit, y_fit, X_test):
+
+    if model == "Linear":
+        A_fit = np.column_stack((np.ones(len(X_fit)), X_fit))
+        A_test = np.column_stack((np.ones(len(X_test)), X_test))
+
+        coeff, _, _, _ = np.linalg.lstsq(A_fit, y_fit, rcond=None)
+        return A_test @ coeff
+
+    elif model == "Quadratic":
+        A_fit = quadratic_features(X_fit)
+        A_test = quadratic_features(X_test)
+
+        coeff, _, _, _ = np.linalg.lstsq(A_fit, y_fit, rcond=None)
+        return A_test @ coeff
+
+    elif model == "Gaussian RBF":
+        # Standardise using ONLY the current training fold
+        mean = X_fit.mean(axis=0)
+        std = X_fit.std(axis=0)
+        std = np.where(std == 0, 1, std)
+
+        def kernel(X1, X2):
+            X1 = (X1 - mean) / std
+            X2 = (X2 - mean) / std
+
+            dist_sq = np.sum(
+                (X1[:, None, :] - X2[None, :, :])**2,
+                axis=2
+            )
+            return np.exp(-dist_sq / (2 * length_scale**2))
+
+        K = kernel(X_fit, X_fit)
+        y_mean_fold = y_fit.mean()
+
+        weights = np.linalg.solve(
+            K + regularisation * np.eye(len(X_fit)),
+            y_fit - y_mean_fold
+        )
+
+        return y_mean_fold + kernel(X_test, X_fit) @ weights
+
+
+# Group measurements by nominal yaw angle
+yaw_groups = 4 * np.rint(x_train[:, 1] / 4).astype(int)
+
+model_names = ["Linear", "Quadratic", "Gaussian RBF"]
+
+# Store predictions and results for each model
+cv_predictions = {}
+cv_results = {}
+
+for model in model_names:
+
+    predictions = np.zeros(len(y_train))
+
+    # Withhold one yaw group at a time
+    for yaw in np.unique(yaw_groups):
+
+        test_mask = yaw_groups == yaw
+        train_mask = ~test_mask
+
+        X_fit = x_train[train_mask]
+        y_fit = y_train[train_mask]
+        X_test = x_train[test_mask]
+
+        # Fit model and predict withheld measurements
+        predictions[test_mask] = fit_predict(
+            model, X_fit, y_fit, X_test
+        )
+
+    # Calculate cross-validation errors
+    errors_cv = predictions - y_train
+    rmse_cv = np.sqrt(np.mean(errors_cv**2))
+    mae_cv = np.mean(np.abs(errors_cv))
+
+    cv_predictions[model] = predictions
+    cv_results[model] = (rmse_cv, mae_cv)
+
+    print(f"\n{model} Cross-Validation:")
+    print(f"RMSE: {rmse_cv:.5f} m^2")
+    print(f"MAE:  {mae_cv:.5f} m^2")
+
+# Mdel with lowest cross-validation RMSE
+best_model = min(cv_results, key=lambda m: cv_results[m][0])
+
+print(f"\nBest model based on CV RMSE: {best_model}")
+
+
+# Plotting
+equations = {
+    "Linear": linear_eq,
+    "Quadratic": quadratic_eq,
+    "Gaussian RBF": rbf_eq.split("\n")[0]
+}
+fig, axes = plt.subplots(1, 3, figsize=(15, 8), dpi=120)
+
+limits = [
+    min(y_train.min(), *(p.min() for p in cv_predictions.values())),
+    max(y_train.max(), *(p.max() for p in cv_predictions.values()))
+]
+
+for ax, model in zip(axes, model_names):
+
+    predictions = cv_predictions[model]
+    rmse_cv, mae_cv = cv_results[model]
+
+    ax.scatter(y_train, predictions, s=40)
+    ax.plot(limits, limits, "k--", label="Prediction Model")
+
+    ax.set_xlabel(r"Measured $C_LA$ ($\mathrm{m^2}$)")
+    ax.set_ylabel(r"Predicted $C_LA$ ($\mathrm{m^2}$)")
+    ax.set_title( model + "\nLeave-One-Yaw-Out CV\n" + equations[model])
+
+    ax.text(
+        0.05, 0.95,
+        rf"$\mathrm{{RMSE}} = {rmse_cv:.4f}\ \mathrm{{m^2}}$" "\n"
+        rf"$\mathrm{{MAE}} = {mae_cv:.4f}\ \mathrm{{m^2}}$",
+        transform=ax.transAxes,
+        va="top",
+        bbox=dict(facecolor="white", alpha=0.8, edgecolor="gray")
+    )
+
+    ax.set_xlim(limits)
+    ax.set_ylim(limits)
+    ax.grid(True)
+    ax.legend(loc="lower right")
+
+plt.tight_layout()
+plt.show()
+
+
+# -------- Part 7 - Velocity Cross-Validation
+
+# Group by airspeeds
+nominal_speeds = [11, 17, 19]
+speed_groups = np.array([
+    min(nominal_speeds, key=lambda s: abs(v - s))
+    for v in x_train[:, 0]
+])
+
+# Withhold the 17 m/s test condition
+test_mask = speed_groups == 17
+train_mask = ~test_mask
+
+# Split data
+X_fit = x_train[train_mask]
+y_fit = y_train[train_mask]
+
+X_test = x_train[test_mask]
+y_test = y_train[test_mask]
+
+# Store results
+velocity_predictions = {}
+velocity_results = {}
+
+for model in model_names:
+
+    # Fit using 11 and 19 m/s, predict 17 m/s
+    predictions = fit_predict(model, X_fit, y_fit, X_test)
+
+    # Calculate prediction errors
+    errors = predictions - y_test
+    rmse_vel = np.sqrt(np.mean(errors**2))
+    mae_vel = np.mean(np.abs(errors))
+
+    velocity_predictions[model] = predictions
+    velocity_results[model] = (rmse_vel, mae_vel)
+
+    print(f"\n{model} - Velocity Interpolation:")
+    print(f"RMSE: {rmse_vel:.5f} m^2")
+    print(f"MAE:  {mae_vel:.5f} m^2")
+
+# Plot predictinos 
+
+fig, ax = plt.subplots(figsize=(8, 5), dpi=120)
+
+# Sort measurements by yaw
+order = np.argsort(X_test[:, 1])
+yaw = X_test[order, 1]
+
+# Experimental measurements
+ax.plot(
+    yaw, y_test[order], "ko-",
+    linewidth=2, label="Wind Tunnel"
+)
+
+# Model predictions
+for model in model_names:
+    predictions = velocity_predictions[model]
+    rmse_vel, mae_vel = velocity_results[model]
+
+    ax.plot(
+        yaw, predictions[order], "o--",
+        label=f"{model} (RMSE = {rmse_vel:.4f})"
+    )
+
+ax.set_xlabel(r"Yaw Angle, $\beta$ ($^\circ$)")
+ax.set_ylabel(r"Downforce Area, $C_LA$ ($\mathrm{m^2}$)")
+ax.set_title("Velocity Cross-Validation at 17 m/s")
+
+ax.grid(True)
+ax.legend()
+plt.tight_layout()
+plt.show()
+
+
+# -------- Part 8 - Gaussian RBF Hyperparameter Optimisation
+# Hyperparameter ranges
+length_scales = [0.3, 0.5, 0.75, 1.0, 1.5, 2.0, 3.0]
+regularisations = [1e-5, 1e-4, 1e-3, 1e-2, 1e-1]
+
+# Function to fit and predict hyperparams
+def rbf_cv_predict(X_fit, y_fit, X_test, ls, reg):
+
+    # Standardise inputs using training fold only
+    mean = X_fit.mean(axis=0)
+    std = X_fit.std(axis=0)
+    std = np.where(std == 0, 1, std)
+
+    def kernel(X1, X2):
+        X1 = (X1 - mean) / std
+        X2 = (X2 - mean) / std
+
+        dist_sq = np.sum(
+            (X1[:, None, :] - X2[None, :, :])**2,
+            axis=2
+        )
+
+        return np.exp(-dist_sq / (2 * ls**2))
+
+    # Fit RBF model
+    K = kernel(X_fit, X_fit)
+    y_mean_fold = y_fit.mean()
+
+    weights = np.linalg.solve(
+        K + reg * np.eye(len(X_fit)),
+        y_fit - y_mean_fold
+    )
+
+    # Predict withheld measurements
+    return y_mean_fold + kernel(X_test, X_fit) @ weights
+
+
+# Grid search using leave-one-yaw-out cross-validation
+rmse_grid = np.zeros((len(length_scales), len(regularisations)))
+
+for i, ls in enumerate(length_scales):
+    for j, reg in enumerate(regularisations):
+
+        predictions = np.zeros(len(y_train))
+
+        for yaw in np.unique(yaw_groups):
+
+            test_mask = yaw_groups == yaw
+            train_mask = ~test_mask
+
+            predictions[test_mask] = rbf_cv_predict(
+                x_train[train_mask],
+                y_train[train_mask],
+                x_train[test_mask],
+                ls,
+                reg
+            )
+
+        rmse_grid[i, j] = np.sqrt(
+            np.mean((predictions - y_train)**2)
+        )
+
+
+# Identify hyperparameters
+best_idx = np.unravel_index(np.argmin(rmse_grid), rmse_grid.shape)
+
+best_length_scale = length_scales[best_idx[0]]
+best_regularisation = regularisations[best_idx[1]]
+best_rmse = rmse_grid[best_idx]
+
+print("\nGaussian RBF Hyperparameter Optimisation")
+print(f"Optimal length scale: {best_length_scale}")
+print(f"Optimal regularisation: {best_regularisation}")
+print(f"Minimum CV RMSE: {best_rmse:.5f} m^2")
+
+
+# Plot hyperparameter sensitivity
+fig, ax = plt.subplots(figsize=(9, 6), dpi=120)
+
+im = ax.imshow(
+    rmse_grid,
+    origin="lower",
+    aspect="auto",
+    cmap="viridis"
+)
+
+ax.set_xticks(range(len(regularisations)))
+ax.set_xticklabels([f"{r:g}" for r in regularisations])
+
+ax.set_yticks(range(len(length_scales)))
+ax.set_yticklabels(length_scales)
+
+ax.set_xlabel(r"Regularisation, $\lambda$")
+ax.set_ylabel(r"Length Scale, $\ell$")
+ax.set_title(
+    "Gaussian RBF Hyperparameter Optimisation\n"
+    "Leave-One-Yaw-Out Cross-Validation"
+)
+
+# Displaying RMSE
+for i in range(len(length_scales)):
+    for j in range(len(regularisations)):
+        ax.text(
+            j, i, f"{rmse_grid[i, j]:.4f}",
+            ha="center",
+            va="center",
+            color="white",
+            fontsize=9
+        )
+
+# Optimal hyperparameters
+ax.scatter(
+    best_idx[1], best_idx[0],
+    marker="o",
+    s=220,
+    facecolors="none",
+    edgecolors="red",
+    linewidths=2.5
+)
+
+cbar = fig.colorbar(im, ax=ax)
+cbar.set_label(r"Cross-Validation RMSE ($\mathrm{m^2}$)")
+
+plt.tight_layout()
+plt.show()
+
+
+
+# -------- Part 9 - Independent Model Validation
+
+# Refit optimised Gaussian RBF using the full training dataset
+x_mean = x_train.mean(axis=0)
+x_std = x_train.std(axis=0)
+
+def tuned_rbf_kernel(X1, X2):
+    X1_scaled = (X1 - x_mean) / x_std
+    X2_scaled = (X2 - x_mean) / x_std
+
+    dist_sq = np.sum(
+        (X1_scaled[:, None, :] - X2_scaled[None, :, :])**2,
+        axis=2
+    )
+
+    return np.exp(-dist_sq / (2 * best_length_scale**2))
+
+
+K_tuned = tuned_rbf_kernel(x_train, x_train)
+y_mean_tuned = y_train.mean()
+
+weights_tuned = np.linalg.solve(
+    K_tuned + best_regularisation * np.eye(len(x_train)),
+    y_train - y_mean_tuned
+)
+
+
+# Prediction functions for the three fitted models
+def predict_model(model, X):
+
+    if model == "Linear":
+        A = np.column_stack((np.ones(len(X)), X))
+        return A @ coeff
+
+    elif model == "Quadratic":
+        return quadratic_features(X) @ coeff_quad
+
+    elif model == "Gaussian RBF":
+        return (
+            y_mean_tuned
+            + tuned_rbf_kernel(X, x_train) @ weights_tuned
+        )
+
+
+# Independent validation datasets
+validation_sets = {
+    "Wind Tunnel Validation": (X_val1, Y_val1),
+    "CFD Comparison": (X_val2, Y_val2)
+}
+
+validation_results = {}
+
+# Calculate validation errors
+for dataset_name, (X_val, Y_val) in validation_sets.items():
+
+    validation_results[dataset_name] = {}
+
+    print(f"\n{dataset_name}")
+    print("-" * 45)
+
+    for model in model_names:
+
+        predictions = predict_model(model, X_val)
+
+        errors = predictions - Y_val
+        rmse = np.sqrt(np.mean(errors**2))
+        mae = np.mean(np.abs(errors))
+
+        validation_results[dataset_name][model] = {
+            "predictions": predictions,
+            "rmse": rmse,
+            "mae": mae
+        }
+
+        print(
+            f"{model:15s} "
+            f"RMSE = {rmse:.5f} m^2, "
+            f"MAE = {mae:.5f} m^2"
+        )
+
+
+# -------- Plot Independent Validation Results
+fig, axes = plt.subplots(1, 2, figsize=(15, 7), dpi=120)
+
+# Shared axis limits
+all_values = []
+
+for dataset_name, (X_val, Y_val) in validation_sets.items():
+    all_values.extend(Y_val)
+
+    for model in model_names:
+        all_values.extend(
+            validation_results[dataset_name][model]["predictions"]
+        )
+
+limits = [min(all_values), max(all_values)]
+
+for ax, (dataset_name, (X_val, Y_val)) in zip(
+    axes, validation_sets.items()
+):
+
+    # Ideal prediction
+    ax.plot(limits, limits, "k--", label="Ideal Prediction")
+
+    # Plot each model
+    for model in model_names:
+
+        results = validation_results[dataset_name][model]
+        predictions = results["predictions"]
+        rmse = results["rmse"]
+
+        ax.scatter(
+            Y_val,
+            predictions,
+            s=45,
+            label=f"{model} (RMSE = {rmse:.4f})"
+        )
+
+    ax.set_xlabel(r"Reference $C_LA$ ($\mathrm{m^2}$)")
+    ax.set_ylabel(r"Predicted $C_LA$ ($\mathrm{m^2}$)")
+    ax.set_title(dataset_name)
+
+    ax.set_xlim(limits)
+    ax.set_ylim(limits)
+    ax.set_aspect("equal", adjustable="box")
+    ax.grid(True)
+    ax.legend(loc="best", fontsize=9)
+
+plt.tight_layout()
+plt.show()
