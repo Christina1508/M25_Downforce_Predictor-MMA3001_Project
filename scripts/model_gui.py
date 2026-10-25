@@ -1,14 +1,7 @@
 """Local HTML GUI for the EXISTING MMA3001 downforce_model.py.
 
-Place this file in the `scripts/` directory alongside downforce_model.py,
-validation.py and sensitivity.py. To launch from the project root:
-
-    python scripts/model_gui.py
-
 On Windows, double-click `Open M25 Predictor.bat` in the project root.
 
-Only the original downforce_model.py fits and evaluates the models. This file
-calls its existing predict_model() function; no model equations are duplicated.
 """
 
 from __future__ import annotations
