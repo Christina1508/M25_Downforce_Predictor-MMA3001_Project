@@ -2,6 +2,8 @@
 
 **MMA3001 – Numerical Methods and Machine Learning**
 
+Repo link: https://github.com/Christina1508/MMA3001-Project-ChristinaDevaDoss 
+
 This project develops numerical models to predict the aerodynamic downforce of the Monash Motorsport M25 Formula Student vehicle using experimental wind tunnel data.
 
 Linear regression, quadratic polynomial regression, and Gaussian Radial Basis Function (RBF) regression are compared using cross-validation. The models are independently evaluated against repeated wind tunnel measurements and CFD results. Aerodynamic sensitivity to velocity and yaw angle is also investigated using finite differences.
