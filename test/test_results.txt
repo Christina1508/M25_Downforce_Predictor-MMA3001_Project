@@ -1,0 +1,17 @@
+============================= test session starts =============================
+platform win32 -- Python 3.12.7, pytest-9.1.1, pluggy-1.7.0 -- C:\Users\chris\AppData\Local\Programs\Python\Python312\python.exe
+rootdir: C:\Users\chris\OneDrive - Monash University\2026 Sem2\MMA3001\MMA3001-Project-ChristinaDevaDoss
+plugins: anyio-4.12.1, zarr-3.1.5
+collecting ... collected 9 items
+
+test/test_model.py::test_quadratic_features PASSED                       [ 11%]
+test/test_model.py::test_linear_regression PASSED                        [ 22%]
+test/test_model.py::test_quadratic_regression PASSED                     [ 33%]
+test/test_model.py::test_rbf_constant_response PASSED                    [ 44%]
+test/test_model.py::test_gaussian_kernel PASSED                          [ 55%]
+test/test_model.py::test_end_to_end_pipeline PASSED                      [ 66%]
+test/test_model.py::test_finite_difference_sensitivity PASSED            [ 77%]
+test/test_model.py::test_data_extraction PASSED                          [ 88%]
+test/test_model.py::test_validation_metrics PASSED                       [100%]
+
+============================== 9 passed in 4.28s ==============================
