@@ -204,6 +204,7 @@ This project may make use of generative Artificial Intelligence (AI) tools, such
 - Explaining programming concepts and debugging strategies.
 - Providing suggestions for code structure and documentation.
 - Assisting with brainstorming ideas and planning the project.
+- Assist in generating code for the model gui
 - Improving the clarity and grammar of written documentation.
 - Explaining error messages and recommending potential solutions.
 
